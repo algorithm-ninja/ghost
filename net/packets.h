@@ -1,7 +1,10 @@
 #pragma once
 #include "config.h"
+#include "util.h"
+#include <arpa/inet.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 namespace net {
@@ -49,7 +52,6 @@ struct ChunkListRequest {
 struct ClientStatus {
   static constexpr uint8_t kType = 2;
   PacketHeader hdr;
-  uint64_t client_id;
 
   bool Write(int fd) const;
   ClientStatus() { hdr.type = kType; }
@@ -60,7 +62,6 @@ struct ServerHello {
   static constexpr uint8_t kType = 3;
   PacketHeader hdr;
   uint32_t file_id;
-  uint64_t client_id;
   // URL for updates.
   uint8_t url[256];
 
@@ -125,9 +126,18 @@ template <typename F> bool Read(int fd, const F &callback) {
   const constexpr uint32_t kMaxPacketSize = sizeof(Chunk);
   uint8_t data[kMaxPacketSize] = {};
   int32_t len = 0;
-  if ((len = read(fd, data, kMaxPacketSize)) == -1) {
+
+  struct sockaddr_in6 addr = {};
+  socklen_t address_len = sizeof addr;
+
+  if ((len = recvfrom(fd, data, kMaxPacketSize, 0, (sockaddr *)&addr,
+                      &address_len)) == -1) {
     return false;
   }
+
+  char src_ip[INET6_ADDRSTRLEN + 1] = {};
+  SYSCALL_F(inet_ntop(AF_INET6, &addr, src_ip, sizeof src_ip), nullptr);
+
   const PacketHeader *hdr = (PacketHeader *)data;
   switch (hdr->type) {
   case ClientHello::kType: {
@@ -138,37 +148,37 @@ template <typename F> bool Read(int fd, const F &callback) {
     auto pkt = (ChunkListRequest *)data;
     pkt->unserialized_num_hashes =
         (len - offsetof(ChunkListRequest, hash)) / sizeof *pkt->hash;
-    return callback(*pkt);
+    return callback(src_ip, *pkt);
   }
   case ClientStatus::kType: {
     auto pkt = (ClientStatus *)data;
-    return callback(*pkt);
+    return callback(src_ip, *pkt);
   }
   case ServerHello::kType: {
     auto pkt = (ServerHello *)data;
-    return callback(*pkt);
+    return callback(src_ip, *pkt);
   }
   case ChunkRequest::kType: {
     auto pkt = (ChunkRequest *)data;
     pkt->unserialized_num_intervals =
         (len - offsetof(ChunkRequest, intervals)) / sizeof *pkt->intervals;
-    return callback(*pkt);
+    return callback(src_ip, *pkt);
   }
   case ChunkListHeader::kType: {
     auto pkt = (ChunkListHeader *)data;
-    return callback(*pkt);
+    return callback(src_ip, *pkt);
   }
   case ChunkList::kType: {
     auto pkt = (ChunkList *)data;
     pkt->unserialized_num_hashes =
         (len - offsetof(ChunkList, hash)) / sizeof *pkt->hash;
-    return callback(*pkt);
+    return callback(src_ip, *pkt);
   }
   case Chunk::kType: {
     auto pkt = (Chunk *)data;
     pkt->unserialized_data_size =
         (len - offsetof(Chunk, data) - pkt->start_idx) / sizeof *pkt->data;
-    return callback(*pkt);
+    return callback(src_ip, *pkt);
   }
   default:
     return false;
