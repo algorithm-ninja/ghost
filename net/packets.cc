@@ -16,7 +16,9 @@ bool ClientHello::Write(int fd) const {
 bool ChunkListRequest::Write(int fd) const {
   using T = std::decay_t<decltype(*this)>;
   static_assert(std::is_standard_layout_v<T>);
-  return write(fd, this, offsetof(T, hash) + unserialized_num_hashes) == -1;
+  return write(fd, this,
+               offsetof(T, hash) + unserialized_num_hashes * sizeof *hash) ==
+         -1;
 }
 
 bool ClientStatus::Write(int fd) const {
@@ -35,8 +37,9 @@ bool ServerHello::Write(int fd) const {
 bool ChunkRequest::Write(int fd) const {
   using T = std::decay_t<decltype(*this)>;
   static_assert(std::is_standard_layout_v<T>);
-  return write(fd, this, offsetof(T, intervals) + unserialized_num_intervals) ==
-         -1;
+  return write(fd, this,
+               offsetof(T, intervals) +
+                   unserialized_num_intervals * sizeof *intervals) == -1;
 }
 
 bool ChunkListHeader::Write(int fd) const {
@@ -48,14 +51,17 @@ bool ChunkListHeader::Write(int fd) const {
 bool ChunkList::Write(int fd) const {
   using T = std::decay_t<decltype(*this)>;
   static_assert(std::is_standard_layout_v<T>);
-  return write(fd, this, offsetof(T, hash) + unserialized_num_hashes) == -1;
+  return write(fd, this,
+               offsetof(T, hash) + unserialized_num_hashes * sizeof *hash) ==
+         -1;
 }
 
 bool Chunk::Write(int fd) const {
   using T = std::decay_t<decltype(*this)>;
   static_assert(std::is_standard_layout_v<T>);
   return write(fd, this,
-               offsetof(T, data) + unserialized_data_size + start_idx) == -1;
+               offsetof(T, data) +
+                   (unserialized_data_size + start_idx) * sizeof *data) == -1;
 }
 
 } // namespace net

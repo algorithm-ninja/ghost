@@ -1,6 +1,8 @@
 #pragma once
 #include "config.h"
-#include <cstdint>
+#include <stddef.h>
+#include <stdint.h>
+#include <unistd.h>
 
 namespace net {
 
@@ -27,6 +29,7 @@ struct ClientHello {
   uint8_t filename[256];
 
   bool Write(int fd) const;
+  ClientHello() { hdr.type = kType; }
 } __attribute__((packed));
 
 struct ChunkListRequest {
@@ -40,6 +43,7 @@ struct ChunkListRequest {
   enum Flags { kRequestFileHeader = 0b00000001 };
 
   bool Write(int fd) const;
+  ChunkListRequest() { hdr.type = kType; }
 } __attribute__((packed));
 
 struct ClientStatus {
@@ -48,6 +52,7 @@ struct ClientStatus {
   uint64_t client_id;
 
   bool Write(int fd) const;
+  ClientStatus() { hdr.type = kType; }
 } __attribute__((packed));
 
 // Server to client.
@@ -62,6 +67,7 @@ struct ServerHello {
   enum Flags { kUpdateClient = 0b00000001 };
 
   bool Write(int fd) const;
+  ServerHello() { hdr.type = kType; }
 } __attribute__((packed));
 
 struct ChunkRequest {
@@ -73,6 +79,7 @@ struct ChunkRequest {
   uint8_t unserialized_num_intervals;
 
   bool Write(int fd) const;
+  ChunkRequest() { hdr.type = kType; }
 } __attribute__((packed));
 
 struct ChunkListHeader {
@@ -82,6 +89,7 @@ struct ChunkListHeader {
   uint32_t chunk_count;
 
   bool Write(int fd) const;
+  ChunkListHeader() { hdr.type = kType; }
 } __attribute__((packed));
 
 struct ChunkList {
@@ -94,6 +102,7 @@ struct ChunkList {
   uint8_t unserialized_num_hashes = 0;
 
   bool Write(int fd) const;
+  ChunkList() { hdr.type = kType; }
 } __attribute__((packed));
 
 struct Chunk {
@@ -109,6 +118,61 @@ struct Chunk {
   enum Flags { kIsLast = 0b00000001, kIsCompressed = 0b00000010 };
 
   bool Write(int fd) const;
+  Chunk() { hdr.type = kType; }
 } __attribute__((packed));
+
+template <typename F> bool Read(int fd, const F &callback) {
+  const constexpr uint32_t kMaxPacketSize = sizeof(Chunk);
+  uint8_t data[kMaxPacketSize] = {};
+  int32_t len = 0;
+  if ((len = read(fd, data, kMaxPacketSize)) == -1) {
+    return false;
+  }
+  const PacketHeader *hdr = (PacketHeader *)data;
+  switch (hdr->type) {
+  case ClientHello::kType: {
+    auto pkt = (ClientHello *)data;
+    return callback(*pkt);
+  }
+  case ChunkListRequest::kType: {
+    auto pkt = (ChunkListRequest *)data;
+    pkt->unserialized_num_hashes =
+        (len - offsetof(ChunkListRequest, hash)) / sizeof *pkt->hash;
+    return callback(*pkt);
+  }
+  case ClientStatus::kType: {
+    auto pkt = (ClientStatus *)data;
+    return callback(*pkt);
+  }
+  case ServerHello::kType: {
+    auto pkt = (ServerHello *)data;
+    return callback(*pkt);
+  }
+  case ChunkRequest::kType: {
+    auto pkt = (ChunkRequest *)data;
+    pkt->unserialized_num_intervals =
+        (len - offsetof(ChunkRequest, intervals)) / sizeof *pkt->intervals;
+    return callback(*pkt);
+  }
+  case ChunkListHeader::kType: {
+    auto pkt = (ChunkListHeader *)data;
+    return callback(*pkt);
+  }
+  case ChunkList::kType: {
+    auto pkt = (ChunkList *)data;
+    pkt->unserialized_num_hashes =
+        (len - offsetof(ChunkList, hash)) / sizeof *pkt->hash;
+    return callback(*pkt);
+  }
+  case Chunk::kType: {
+    auto pkt = (Chunk *)data;
+    pkt->unserialized_data_size =
+        (len - offsetof(Chunk, data) - pkt->start_idx) / sizeof *pkt->data;
+    return callback(*pkt);
+  }
+  default:
+    return false;
+  };
+}
 
 } // namespace net
