@@ -1,4 +1,4 @@
-#include "hash/hash.h"
+#include "file/hash.h"
 #include "net/multicast.h"
 #include <gflags/gflags.h>
 
