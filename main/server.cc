@@ -6,7 +6,7 @@ int main(int argc, char **argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, false);
   fprintf(stderr, "%s chunk list\n", argv[0]);
   for (uint64_t hash : HashFile(argv[0])) {
-    fprintf(stderr, "%20lu\n", hash);
+    fprintf(stderr, "%016lx\n", hash);
   }
   MulticastSocket sock = JoinMulticastGroup(1234, false);
   while (true) {
