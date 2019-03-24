@@ -1,5 +1,6 @@
 #include "file/hash.h"
 #include "net/multicast.h"
+#include "net/packets.h"
 #include <gflags/gflags.h>
 
 int main(int argc, char **argv) {
